@@ -1,0 +1,18 @@
+[Unit]
+Description=TechRise Goals Tracker Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+User=YOUR_USERNAME
+WorkingDirectory=/home/YOUR_USERNAME/techrisebot
+Environment="PATH=/home/YOUR_USERNAME/techrisebot/venv/bin"
+ExecStart=/home/YOUR_USERNAME/techrisebot/venv/bin/python3 /home/YOUR_USERNAME/techrisebot/bot.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/YOUR_USERNAME/techrisebot/bot.log
+StandardError=append:/home/YOUR_USERNAME/techrisebot/bot.log
+
+[Install]
+WantedBy=multi-user.target
+
