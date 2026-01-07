@@ -26,9 +26,15 @@ nano .env
 # TELEGRAM_USER_ID=ваш_id
 
 # 6. Настройте systemd сервис
-# Отредактируйте techrisebot.service, заменив YOUR_USERNAME на ваше имя пользователя
+# ⚠️ ВАЖНО: Отредактируйте techrisebot.service, заменив YOUR_USERNAME на ваше имя пользователя!
+# Узнайте ваше имя пользователя:
+whoami
+# Если выводит "root" - используйте root, если "ubuntu" - используйте ubuntu и т.д.
+
 sudo cp techrisebot.service /etc/systemd/system/techrisebot.service
-sudo nano /etc/systemd/system/techrisebot.service  # Замените YOUR_USERNAME
+sudo nano /etc/systemd/system/techrisebot.service  # Замените YOUR_USERNAME на результат команды whoami
+
+# Если получили ошибку "Failed to determine user credentials", см. FIX_SERVICE.md
 
 # 7. Запустите
 sudo systemctl daemon-reload
@@ -68,4 +74,10 @@ python3 bot.py
 # В Telegram напишите боту: /start
 # Проверьте логи: tail -f bot.log
 ```
+
+## ⚠️ Решение проблем
+
+Если видите ошибку `Failed to determine user credentials` или `status=217/USER`:
+- См. файл `FIX_SERVICE.md` для подробных инструкций
+- Убедитесь, что заменили `YOUR_USERNAME` на ваше реальное имя пользователя в файле сервиса
 

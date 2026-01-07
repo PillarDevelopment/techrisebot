@@ -101,9 +101,16 @@ WantedBy=multi-user.target
 
 **Важно:** Замените `your_username` на ваше реальное имя пользователя на сервере!
 
-### Шаг 6: Запуск сервиса
+### Шаг 6: Настройка и запуск сервиса
 
 ```bash
+# ВАЖНО: Сначала отредактируйте файл сервиса!
+# Замените YOUR_USERNAME на ваше реальное имя пользователя
+sudo nano /etc/systemd/system/techrisebot.service
+
+# Узнайте ваше имя пользователя, если не знаете:
+whoami
+
 # Перезагрузите systemd для чтения нового сервиса
 sudo systemctl daemon-reload
 
@@ -116,6 +123,8 @@ sudo systemctl start techrisebot
 # Проверьте статус
 sudo systemctl status techrisebot
 ```
+
+**Если видите ошибку `Failed to determine user credentials`**, см. файл `FIX_SERVICE.md` для решения проблемы.
 
 ### Управление сервисом
 
