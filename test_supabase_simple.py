@@ -47,7 +47,7 @@ def test_client_creation():
             print(f"❌ Ошибка версии библиотеки: {e}")
             print("\n💡 Решение:")
             print("   pip uninstall supabase -y")
-            print("   pip install supabase==2.3.4")
+            print("   pip install supabase==2.27.0")
             return False
         else:
             print(f"❌ Ошибка создания клиента: {e}")

@@ -42,11 +42,11 @@ class SupabaseDatabase:
             # Если ошибка связана с proxy, это проблема версии библиотеки
             if "proxy" in error_msg.lower() or "unexpected keyword argument" in error_msg.lower():
                 logger.error(f"Ошибка версии библиотеки supabase-py: {e}")
-                logger.error("Попробуйте установить конкретную версию: pip install supabase==2.3.4")
+                logger.error("Попробуйте установить конкретную версию: pip install supabase==2.27.0")
                 raise ValueError(
                     f"Несовместимость версий библиотеки supabase-py. "
                     f"Ошибка: {e}. "
-                    f"Решение: pip uninstall supabase -y && pip install supabase==2.3.4"
+                    f"Решение: pip uninstall supabase -y && pip install supabase==2.27.0"
                 )
             else:
                 logger.error(f"Ошибка подключения к Supabase: {e}")
