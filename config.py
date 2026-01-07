@@ -14,8 +14,13 @@ TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 # ID пользователя Telegram (чтобы бот отправлял уведомления только вам)
 TELEGRAM_USER_ID = int(os.getenv('TELEGRAM_USER_ID', '0'))
 
-# Название файла базы данных
+# Название файла базы данных (для SQLite, будет заменено на Supabase)
 DATABASE_NAME = 'goals.db'
+
+# Supabase настройки
+SUPABASE_URL = os.getenv('SUPABASE_URL')
+SUPABASE_KEY = os.getenv('SUPABASE_KEY')
+SUPABASE_SERVICE_ROLE_KEY = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
 
 # Часовой пояс для уведомлений (МСК = UTC+3)
 TIMEZONE = 'Europe/Moscow'
