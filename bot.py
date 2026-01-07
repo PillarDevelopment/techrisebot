@@ -12,7 +12,7 @@ from telegram.ext import (
     filters,
     ContextTypes
 )
-from config import TELEGRAM_BOT_TOKEN
+from config import TELEGRAM_BOT_TOKEN, SUPABASE_URL, SUPABASE_KEY
 from database_supabase import SupabaseDatabase
 from goals import GoalsCalculator
 from scheduler import NotificationScheduler
@@ -25,10 +25,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Инициализация базы данных и калькулятора
-db = SupabaseDatabase()
-# Дефолтные цели создаются автоматически для каждого пользователя при регистрации
-calculator = GoalsCalculator(db)
+# Глобальные переменные для базы данных и калькулятора (инициализируются в main())
+db = None
+calculator = None
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -540,9 +539,30 @@ def main():
     """
     Главная функция для запуска бота
     """
+    global db, calculator
+    
     # Проверяем наличие токена
     if not TELEGRAM_BOT_TOKEN:
         logger.error("TELEGRAM_BOT_TOKEN не установлен! Создайте файл .env")
+        return
+    
+    # Проверяем наличие переменных Supabase
+    if not SUPABASE_URL:
+        logger.error("SUPABASE_URL не установлен! Создайте файл .env и добавьте SUPABASE_URL")
+        return
+    
+    if not SUPABASE_KEY:
+        logger.error("SUPABASE_KEY не установлен! Создайте файл .env и добавьте SUPABASE_KEY")
+        return
+    
+    # Инициализируем базу данных и калькулятор
+    try:
+        db = SupabaseDatabase()
+        calculator = GoalsCalculator(db)
+        logger.info("База данных и калькулятор инициализированы")
+    except Exception as e:
+        logger.error(f"Ошибка инициализации базы данных: {e}")
+        logger.error("Проверьте переменные окружения SUPABASE_URL и SUPABASE_KEY")
         return
     
     # Создаем приложение бота
