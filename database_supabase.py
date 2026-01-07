@@ -33,23 +33,20 @@ class SupabaseDatabase:
             raise ValueError("SUPABASE_KEY не установлен в переменных окружения")
         
         try:
-            # Создаем клиент с явными параметрами
-            # Используем только обязательные параметры для совместимости
-            self.client: Client = create_client(
-                supabase_url=SUPABASE_URL,
-                supabase_key=SUPABASE_KEY
-            )
+            # Создаем клиент - используем позиционные аргументы для максимальной совместимости
+            self.client: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
             logger.info("Подключение к Supabase установлено")
         except TypeError as e:
-            # Если ошибка связана с аргументами, попробуем старый способ
-            if "unexpected keyword argument" in str(e):
-                logger.warning("Попытка создать клиент с альтернативным способом...")
-                try:
-                    self.client: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-                    logger.info("Подключение к Supabase установлено (альтернативный способ)")
-                except Exception as e2:
-                    logger.error(f"Ошибка подключения к Supabase: {e2}")
-                    raise ValueError(f"Не удалось создать клиент Supabase. Проверьте версию библиотеки supabase-py. Ошибка: {e2}")
+            error_msg = str(e)
+            # Если ошибка связана с proxy или другими неожиданными аргументами
+            if "unexpected keyword argument" in error_msg or "proxy" in error_msg.lower():
+                logger.error(f"Ошибка версии библиотеки supabase-py: {e}")
+                logger.error("Попробуйте обновить библиотеку: pip install --upgrade supabase")
+                raise ValueError(
+                    f"Несовместимость версий библиотеки supabase-py. "
+                    f"Ошибка: {e}. "
+                    f"Попробуйте: pip install --upgrade supabase httpx"
+                )
             else:
                 logger.error(f"Ошибка подключения к Supabase: {e}")
                 raise
