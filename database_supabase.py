@@ -33,26 +33,24 @@ class SupabaseDatabase:
             raise ValueError("SUPABASE_KEY не установлен в переменных окружения")
         
         try:
-            # Создаем клиент - используем позиционные аргументы для максимальной совместимости
+            # Создаем клиент стандартным способом
+            # Используем позиционные аргументы для максимальной совместимости
             self.client: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
             logger.info("Подключение к Supabase установлено")
-        except TypeError as e:
+        except Exception as e:
             error_msg = str(e)
-            # Если ошибка связана с proxy или другими неожиданными аргументами
-            if "unexpected keyword argument" in error_msg or "proxy" in error_msg.lower():
+            # Если ошибка связана с proxy, это проблема версии библиотеки
+            if "proxy" in error_msg.lower() or "unexpected keyword argument" in error_msg.lower():
                 logger.error(f"Ошибка версии библиотеки supabase-py: {e}")
-                logger.error("Попробуйте обновить библиотеку: pip install --upgrade supabase")
+                logger.error("Попробуйте установить конкретную версию: pip install supabase==2.3.4")
                 raise ValueError(
                     f"Несовместимость версий библиотеки supabase-py. "
                     f"Ошибка: {e}. "
-                    f"Попробуйте: pip install --upgrade supabase httpx"
+                    f"Решение: pip uninstall supabase -y && pip install supabase==2.3.4"
                 )
             else:
                 logger.error(f"Ошибка подключения к Supabase: {e}")
                 raise
-        except Exception as e:
-            logger.error(f"Ошибка подключения к Supabase: {e}")
-            raise
     
     # ========================================================================
     # МЕТОДЫ РАБОТЫ С ПОЛЬЗОВАТЕЛЯМИ
