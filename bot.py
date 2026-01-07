@@ -40,11 +40,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📋 Доступные команды:\n"
         "/today - сводка на сегодня\n"
         "/goals - список всех целей\n"
+        "/done [задача] - быстро добавить выполненную задачу\n"
         "/update [категория] [значение] - обновить прогресс\n"
         "/report - недельный отчет\n"
         "/log [текст] - добавить запись в дневник\n"
         "/remind [on/off] - включить/выключить уведомления\n\n"
-        "Примеры:\n"
+        "⚡ Быстрые команды (/done):\n"
+        "/done тренировка - отметить тренировку\n"
+        "/done доход 50000 - добавить доход\n"
+        "/done страна - добавить страну\n"
+        "/done марафон - отметить марафон\n\n"
+        "📝 Примеры (/update):\n"
         "/update вес 85\n"
         "/update доход 500000\n"
         "/update тренировки 3\n"
@@ -308,6 +314,196 @@ async def skip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Пропущено. Хорошего вечера! 🌙")
 
 
+async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Обработчик команды /done
+    Быстрое добавление выполненных задач
+    
+    Примеры:
+    /done тренировка - отметить тренировку
+    /done доход 50000 - добавить доход за день
+    /done страна - добавить посещенную страну
+    /done марафон - отметить пробежанный марафон
+    """
+    try:
+        if not context.args:
+            await update.message.reply_text(
+                "✅ Быстрое добавление выполненных задач\n\n"
+                "📋 Доступные команды:\n"
+                "/done тренировка - отметить тренировку (+1 к счетчику)\n"
+                "/done доход [сумма] - добавить доход за день\n"
+                "/done страна - добавить посещенную страну (+1)\n"
+                "/done марафон - отметить пробежанный марафон (+1)\n"
+                "/done вес [кг] - обновить вес\n\n"
+                "Примеры:\n"
+                "/done тренировка\n"
+                "/done доход 50000\n"
+                "/done страна"
+            )
+            return
+        
+        task = context.args[0].lower()
+        
+        # Тренировка
+        if task in ['тренировка', 'тренировки', 'workout']:
+            goals_list = db.get_goals_by_category('спорт')
+            workout_goal = None
+            for goal in goals_list:
+                if 'Тренировки' in goal['name']:
+                    workout_goal = goal
+                    break
+            
+            if workout_goal:
+                new_value = workout_goal['current_value'] + 1
+                db.update_goal_value(workout_goal['id'], new_value, note="Тренировка выполнена")
+                await update.message.reply_text(
+                    f"🏃 Тренировка засчитана!\n"
+                    f"Всего тренировок на этой неделе: {new_value:.0f}"
+                )
+            else:
+                await update.message.reply_text("❌ Цель по тренировкам не найдена")
+        
+        # Доход
+        elif task in ['доход', 'income', 'заработок']:
+            if len(context.args) < 2:
+                await update.message.reply_text(
+                    "❌ Укажите сумму дохода.\n"
+                    "Пример: /done доход 50000"
+                )
+                return
+            
+            try:
+                income = float(context.args[1])
+                from datetime import date
+                goals_list = db.get_goals_by_category('финансы')
+                current_month = date.today().month
+                
+                if current_month <= 2:
+                    goal_name_to_find = 'Доход 1М/мес'
+                elif current_month <= 5:
+                    goal_name_to_find = 'Доход 2М/мес'
+                else:
+                    goal_name_to_find = 'Доход 5М/мес'
+                
+                goal_found = None
+                for goal in goals_list:
+                    if goal_name_to_find in goal['name']:
+                        goal_found = goal
+                        break
+                
+                if goal_found:
+                    # Обновляем доход (заменяем значение, так как это месячный доход)
+                    db.update_goal_value(goal_found['id'], income, note=f"Доход за день: {income:,.0f} ₽")
+                    await update.message.reply_text(
+                        f"💰 Доход добавлен: {income:,.0f} ₽\n"
+                        f"Обновлена цель: {goal_found['name']}"
+                    )
+                else:
+                    await update.message.reply_text("❌ Не найдена цель по доходу")
+            except ValueError:
+                await update.message.reply_text("❌ Неверный формат суммы. Используйте число.")
+        
+        # Страна
+        elif task in ['страна', 'страны', 'country', 'countries']:
+            goals_list = db.get_goals_by_category('путешествия')
+            country_goal = None
+            for goal in goals_list:
+                if 'страны' in goal['name'].lower() or 'country' in goal['name'].lower():
+                    country_goal = goal
+                    break
+            
+            if country_goal:
+                new_value = country_goal['current_value'] + 1
+                db.update_goal_value(country_goal['id'], new_value, note="Посещена новая страна")
+                await update.message.reply_text(
+                    f"✈️ Страна добавлена!\n"
+                    f"Всего посещено стран: {new_value:.0f}/{country_goal['target_value']:.0f}"
+                )
+            else:
+                await update.message.reply_text("❌ Цель по странам не найдена")
+        
+        # Марафон
+        elif task in ['марафон', 'marathon']:
+            goals_list = db.get_goals_by_category('спорт')
+            marathon_goal = None
+            for goal in goals_list:
+                if 'Марафон' in goal['name']:
+                    marathon_goal = goal
+                    break
+            
+            if marathon_goal:
+                new_value = marathon_goal['current_value'] + 1
+                db.update_goal_value(marathon_goal['id'], new_value, note="Марафон пробежан")
+                await update.message.reply_text(
+                    f"🏃 Марафон засчитан!\n"
+                    f"Всего марафонов: {new_value:.0f}/{marathon_goal['target_value']:.0f}"
+                )
+            else:
+                await update.message.reply_text("❌ Цель по марафонам не найдена")
+        
+        # Вес
+        elif task in ['вес', 'weight']:
+            if len(context.args) < 2:
+                await update.message.reply_text(
+                    "❌ Укажите вес в килограммах.\n"
+                    "Пример: /done вес 85"
+                )
+                return
+            
+            try:
+                weight = float(context.args[1])
+                goals_list = db.get_goals_by_category('спорт')
+                weight_goal = None
+                for goal in goals_list:
+                    if 'Вес' in goal['name']:
+                        weight_goal = goal
+                        break
+                
+                if weight_goal:
+                    old_weight = weight_goal['current_value']
+                    db.update_goal_value(weight_goal['id'], weight, note=f"Обновлен вес: {weight} кг")
+                    
+                    # Пересчитываем прогресс с учетом начального значения
+                    initial = weight_goal.get('initial_value', 105)
+                    target = weight_goal['target_value']
+                    progress = calculator.calculate_progress_percent(weight, target, initial, 'Вес')
+                    
+                    progress_text = ""
+                    if weight <= target:
+                        progress_text = f"✅ Цель достигнута! ({progress:.0f}%)"
+                    elif weight < old_weight:
+                        progress_text = f"📉 Прогресс: {old_weight:.1f} → {weight:.1f} кг ({progress:.0f}%)"
+                    elif weight > old_weight:
+                        progress_text = f"📈 Вес увеличился: {old_weight:.1f} → {weight:.1f} кг ({progress:.0f}%)"
+                    else:
+                        progress_text = f"📊 Текущий прогресс: {progress:.0f}%"
+                    
+                    await update.message.reply_text(
+                        f"⚖️ Вес обновлен: {weight} кг\n"
+                        f"Начальный: {initial} кг → Цель: {target} кг\n"
+                        f"{progress_text}"
+                    )
+                else:
+                    await update.message.reply_text("❌ Цель по весу не найдена")
+            except ValueError:
+                await update.message.reply_text("❌ Неверный формат веса. Используйте число.")
+        
+        else:
+            await update.message.reply_text(
+                f"❌ Неизвестная задача: {task}\n\n"
+                "Доступные задачи:\n"
+                "• тренировка\n"
+                "• доход [сумма]\n"
+                "• страна\n"
+                "• марафон\n"
+                "• вес [кг]"
+            )
+    
+    except Exception as e:
+        logger.error(f"Ошибка в команде /done: {e}")
+        await update.message.reply_text("❌ Произошла ошибка при добавлении задачи")
+
+
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик ошибок"""
     logger.error(f"Update {update} caused error {context.error}")
@@ -333,6 +529,7 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("today", today))
     application.add_handler(CommandHandler("goals", goals))
+    application.add_handler(CommandHandler("done", done))
     application.add_handler(CommandHandler("update", update))
     application.add_handler(CommandHandler("report", report))
     application.add_handler(CommandHandler("log", log_entry))

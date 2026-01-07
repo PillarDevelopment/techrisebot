@@ -48,19 +48,33 @@ class GoalsCalculator:
         except ValueError:
             return None
     
-    def calculate_progress_percent(self, current: float, target: float) -> float:
+    def calculate_progress_percent(self, current: float, target: float, initial: Optional[float] = None, goal_name: Optional[str] = None) -> float:
         """
         Вычислить процент выполнения цели
         
         Args:
             current: текущее значение
             target: целевое значение
+            initial: начальное значение (для целей с уменьшением, например вес)
+            goal_name: название цели (для определения направления)
             
         Returns:
             процент выполнения (0-100)
         """
         if target == 0:
             return 0.0
+        
+        # Для целей с уменьшением (например, вес: от большего к меньшему)
+        # Если есть начальное значение и current > target, значит это уменьшение
+        if initial is not None and current > target:
+            # Прогресс = (initial - current) / (initial - target) * 100
+            # Чем меньше current, тем больше прогресс
+            if initial == target:
+                return 100.0 if current <= target else 0.0
+            progress = ((initial - current) / (initial - target)) * 100
+            return max(0.0, min(100.0, progress))
+        
+        # Для обычных целей (увеличение)
         return min(100.0, (current / target) * 100)
     
     def calculate_time_progress(self, deadline_str: Optional[str]) -> Optional[float]:
@@ -105,9 +119,13 @@ class GoalsCalculator:
         target = goal['target_value']
         deadline = goal.get('deadline')
         
+        # Получаем начальное значение для расчета прогресса
+        initial = goal.get('initial_value')
+        goal_name = goal.get('name', '')
+        
         # Для целей без дедлайна просто считаем процент
         if not deadline:
-            progress = self.calculate_progress_percent(current, target)
+            progress = self.calculate_progress_percent(current, target, initial, goal_name)
             if progress >= 100:
                 return 'completed'
             elif progress >= 80:
@@ -116,7 +134,7 @@ class GoalsCalculator:
                 return 'behind'
         
         # Для целей с дедлайном сравниваем прогресс по значению и по времени
-        value_progress = self.calculate_progress_percent(current, target)
+        value_progress = self.calculate_progress_percent(current, target, initial, goal_name)
         time_progress = self.calculate_time_progress(deadline)
         
         if time_progress is None:
@@ -194,7 +212,12 @@ class GoalsCalculator:
         for cat, cat_goals in categories.items():
             emoji = emoji_map.get(cat, '📌')
             total_progress = sum(
-                self.calculate_progress_percent(g['current_value'], g['target_value'])
+                self.calculate_progress_percent(
+                    g['current_value'], 
+                    g['target_value'],
+                    g.get('initial_value'),
+                    g.get('name', '')
+                )
                 for g in cat_goals
             ) / len(cat_goals) if cat_goals else 0
             
@@ -241,7 +264,9 @@ class GoalsCalculator:
             for goal in cat_goals:
                 progress = self.calculate_progress_percent(
                     goal['current_value'], 
-                    goal['target_value']
+                    goal['target_value'],
+                    goal.get('initial_value'),
+                    goal.get('name', '')
                 )
                 status = self.get_progress_status(goal)
                 status_icon = status_emoji.get(status, '⏳')
@@ -249,8 +274,14 @@ class GoalsCalculator:
                 # Формируем строку цели
                 goal_line = f"├─ {goal['name']}: "
                 
-                # Текущее значение / целевое значение
-                if goal['unit']:
+                # Для веса показываем начальный → текущий → целевой
+                if goal['name'] == 'Вес' and goal.get('initial_value'):
+                    initial = goal['initial_value']
+                    current = goal['current_value']
+                    target = goal['target_value']
+                    goal_line += f"{initial:.0f} → {current:.0f} → {target:.0f} {goal['unit']}"
+                # Для остальных целей: текущее / целевое
+                elif goal['unit']:
                     goal_line += f"{goal['current_value']:.0f}/{goal['target_value']:.0f} {goal['unit']}"
                 else:
                     goal_line += f"{goal['current_value']:.0f}/{goal['target_value']:.0f}"
@@ -297,7 +328,9 @@ class GoalsCalculator:
         for goal in goals[:5]:  # Показываем первые 5 целей
             progress = self.calculate_progress_percent(
                 goal['current_value'],
-                goal['target_value']
+                goal['target_value'],
+                goal.get('initial_value'),
+                goal.get('name', '')
             )
             bar = self.format_progress_bar(progress)
             msg += f"• {goal['name']}: {bar}\n"

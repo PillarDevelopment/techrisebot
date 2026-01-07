@@ -48,6 +48,7 @@ class Database:
                 name TEXT NOT NULL,
                 target_value REAL NOT NULL,
                 current_value REAL DEFAULT 0,
+                initial_value REAL,
                 unit TEXT,
                 deadline DATE,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -55,6 +56,21 @@ class Database:
                 UNIQUE(category, name)
             )
         ''')
+        
+        # Добавляем поле initial_value если его еще нет (миграция)
+        try:
+            cursor.execute('ALTER TABLE goals ADD COLUMN initial_value REAL')
+            conn.commit()
+            
+            # Обновляем существующие записи веса с начальным значением 105
+            cursor.execute('''
+                UPDATE goals 
+                SET initial_value = 105 
+                WHERE name = 'Вес' AND initial_value IS NULL
+            ''')
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # Поле уже существует
         
         # Таблица логов прогресса
         cursor.execute('''
@@ -103,32 +119,39 @@ class Database:
         # Проверяем, есть ли уже цели
         cursor.execute('SELECT COUNT(*) FROM goals')
         if cursor.fetchone()[0] > 0:
+            # Обновляем начальное значение для веса, если оно не установлено
+            cursor.execute('''
+                UPDATE goals 
+                SET initial_value = 105 
+                WHERE name = 'Вес' AND (initial_value IS NULL OR initial_value = 0)
+            ''')
+            conn.commit()
             conn.close()
             return
         
         # Финансовые цели
         goals_data = [
-            ('финансы', 'Доход 1М/мес', 1000000, 0, '₽/мес', '2026-02-28'),
-            ('финансы', 'Доход 2М/мес', 2000000, 0, '₽/мес', '2026-05-31'),
-            ('финансы', 'Доход 5М/мес', 5000000, 0, '₽/мес', '2026-11-30'),
-            ('финансы', 'Источники дохода', 4, 0, 'шт', '2026-06-30'),
+            ('финансы', 'Доход 1М/мес', 1000000, 0, None, '₽/мес', '2026-02-28'),
+            ('финансы', 'Доход 2М/мес', 2000000, 0, None, '₽/мес', '2026-05-31'),
+            ('финансы', 'Доход 5М/мес', 5000000, 0, None, '₽/мес', '2026-11-30'),
+            ('финансы', 'Источники дохода', 4, 0, None, 'шт', '2026-06-30'),
             
-            # Спорт и здоровье
-            ('спорт', 'Вес', 80, 87, 'кг', '2026-06-30'),
-            ('спорт', 'Тренировки в неделю', 4, 0, 'шт/нед', None),
-            ('спорт', 'Марафоны', 2, 0, 'шт', '2026-09-30'),
+            # Спорт и здоровье (для веса: начальный 105, текущий 87, целевой 80)
+            ('спорт', 'Вес', 80, 87, 105, 'кг', '2026-06-30'),
+            ('спорт', 'Тренировки в неделю', 4, 0, None, 'шт/нед', None),
+            ('спорт', 'Марафоны', 2, 0, None, 'шт', '2026-09-30'),
             
             # Покупки
-            ('покупки', 'Voyah Free (авто)', 1, 0, 'шт', '2026-06-30'),
-            ('покупки', 'Квартира в Москве', 25000000, 0, '₽', '2026-06-30'),
+            ('покупки', 'Voyah Free (авто)', 1, 0, None, 'шт', '2026-06-30'),
+            ('покупки', 'Квартира в Москве', 25000000, 0, None, '₽', '2026-06-30'),
             
             # Путешествия
-            ('путешествия', 'Новые страны', 12, 0, 'шт', '2026-12-31'),
+            ('путешествия', 'Новые страны', 12, 0, None, 'шт', '2026-12-31'),
         ]
         
         cursor.executemany('''
-            INSERT OR IGNORE INTO goals (category, name, target_value, current_value, unit, deadline)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT OR IGNORE INTO goals (category, name, target_value, current_value, initial_value, unit, deadline)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         ''', goals_data)
         
         conn.commit()
