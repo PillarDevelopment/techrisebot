@@ -21,14 +21,31 @@ def check_env_file():
     # Проверяем наличие .env файла
     if not os.path.exists('.env'):
         print("❌ Файл .env не найден!")
+        print("   Создайте файл .env в корне проекта с переменными:")
+        print("   TELEGRAM_BOT_TOKEN=...")
+        print("   SUPABASE_URL=...")
+        print("   SUPABASE_KEY=...")
         return False
     
     # Загружаем переменные из .env
     try:
         from dotenv import load_dotenv
         load_dotenv()
+        print("✅ Файл .env найден и загружен")
     except ImportError:
-        print("⚠️  python-dotenv не установлен, проверяю системные переменные...")
+        print("⚠️  python-dotenv не установлен, пытаюсь загрузить .env вручную...")
+        # Простая загрузка .env без dotenv
+        try:
+            with open('.env', 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#') and '=' in line:
+                        key, value = line.split('=', 1)
+                        os.environ[key.strip()] = value.strip()
+            print("✅ Файл .env загружен вручную")
+        except Exception as e:
+            print(f"⚠️  Не удалось загрузить .env: {e}")
+            print("   Проверяю системные переменные...")
     
     for var in required_vars:
         value = os.getenv(var)
@@ -128,8 +145,27 @@ def check_supabase_connection():
         db = SupabaseDatabase()
         print("✅ Подключение к Supabase установлено")
         return True
+    except ValueError as e:
+        error_msg = str(e)
+        if "SUPABASE_URL" in error_msg or "SUPABASE_KEY" in error_msg:
+            print(f"❌ Ошибка: {error_msg}")
+            print("   Проверьте файл .env и убедитесь, что переменные установлены")
+        else:
+            print(f"❌ Ошибка: {error_msg}")
+        return False
     except Exception as e:
-        print(f"❌ Ошибка подключения к Supabase: {e}")
+        error_msg = str(e)
+        if "Invalid API key" in error_msg or "invalid" in error_msg.lower():
+            print(f"❌ Ошибка подключения к Supabase: {error_msg}")
+            print("\n💡 Подсказка:")
+            print("   Используется неправильный SUPABASE_KEY!")
+            print("   В Supabase Dashboard:")
+            print("   1. Settings → API")
+            print("   2. Скопируйте 'anon public' key (НЕ service_role!)")
+            print("   3. Обновите SUPABASE_KEY в файле .env")
+            print("   4. Убедитесь, что SUPABASE_URL начинается с https://")
+        else:
+            print(f"❌ Ошибка подключения к Supabase: {error_msg}")
         return False
 
 def main():
