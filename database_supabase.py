@@ -5,10 +5,16 @@
 import logging
 from datetime import datetime, date, timedelta
 from typing import Optional, List, Dict, Any
-from supabase import create_client, Client
 from config import SUPABASE_URL, SUPABASE_KEY
 
 logger = logging.getLogger(__name__)
+
+# Импортируем supabase с обработкой ошибок версий
+try:
+    from supabase import create_client, Client
+except ImportError as e:
+    logger.error(f"Не удалось импортировать supabase: {e}")
+    raise
 
 
 class SupabaseDatabase:
@@ -27,8 +33,26 @@ class SupabaseDatabase:
             raise ValueError("SUPABASE_KEY не установлен в переменных окружения")
         
         try:
-            self.client: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+            # Создаем клиент с явными параметрами
+            # Используем только обязательные параметры для совместимости
+            self.client: Client = create_client(
+                supabase_url=SUPABASE_URL,
+                supabase_key=SUPABASE_KEY
+            )
             logger.info("Подключение к Supabase установлено")
+        except TypeError as e:
+            # Если ошибка связана с аргументами, попробуем старый способ
+            if "unexpected keyword argument" in str(e):
+                logger.warning("Попытка создать клиент с альтернативным способом...")
+                try:
+                    self.client: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+                    logger.info("Подключение к Supabase установлено (альтернативный способ)")
+                except Exception as e2:
+                    logger.error(f"Ошибка подключения к Supabase: {e2}")
+                    raise ValueError(f"Не удалось создать клиент Supabase. Проверьте версию библиотеки supabase-py. Ошибка: {e2}")
+            else:
+                logger.error(f"Ошибка подключения к Supabase: {e}")
+                raise
         except Exception as e:
             logger.error(f"Ошибка подключения к Supabase: {e}")
             raise
