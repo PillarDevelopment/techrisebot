@@ -144,6 +144,38 @@ class SupabaseDatabase:
             logger.error(f"Ошибка в update_user: {e}")
             raise
     
+    def get_users_with_notifications_enabled(self) -> List[Dict[str, Any]]:
+        """
+        Получить список всех пользователей с включенными уведомлениями
+        
+        Returns:
+            list: Список пользователей с включенными уведомлениями
+        """
+        try:
+            # Получаем всех активных пользователей
+            users_response = self.client.table('users')\
+                .select('id, telegram_user_id, first_name, last_name')\
+                .eq('is_active', True)\
+                .execute()
+            
+            if not users_response.data:
+                return []
+            
+            # Фильтруем пользователей с включенными уведомлениями
+            users_with_notifications = []
+            for user in users_response.data:
+                user_id = user['id']
+                # Проверяем настройку уведомлений (по умолчанию 'on')
+                setting = self.get_setting(user_id, 'notifications_enabled', 'on')
+                if setting == 'on':
+                    users_with_notifications.append(user)
+            
+            return users_with_notifications
+            
+        except Exception as e:
+            logger.error(f"Ошибка в get_users_with_notifications_enabled: {e}")
+            return []
+    
     # ========================================================================
     # МЕТОДЫ РАБОТЫ С ЦЕЛЯМИ
     # ========================================================================

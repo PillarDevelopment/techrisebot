@@ -4,18 +4,18 @@
 """
 from datetime import datetime, date, timedelta
 from typing import Dict, List, Any, Optional
-from database import Database
+from database_supabase import SupabaseDatabase
 
 
 class GoalsCalculator:
     """Класс для расчета прогресса по целям"""
     
-    def __init__(self, db: Database):
+    def __init__(self, db: SupabaseDatabase):
         """
         Инициализация калькулятора
         
         Args:
-            db: объект базы данных
+            db: объект базы данных Supabase
         """
         self.db = db
     
@@ -164,9 +164,12 @@ class GoalsCalculator:
         bar = '▓' * filled + '░' * (length - filled)
         return f"{bar} {percent:.0f}%"
     
-    def get_today_summary(self) -> str:
+    def get_today_summary(self, user_id: str) -> str:
         """
         Получить сводку на сегодня
+        
+        Args:
+            user_id: UUID пользователя
         
         Returns:
             форматированная строка со сводкой
@@ -176,8 +179,8 @@ class GoalsCalculator:
         
         msg = f"📅 День {day}/365 ({year_progress}% года прошло)\n\n"
         
-        # Получаем все цели
-        goals = self.db.get_goals_by_category()
+        # Получаем все цели пользователя
+        goals = self.db.get_user_goals(user_id)
         
         # Группируем по категориям
         categories = {}
@@ -225,16 +228,19 @@ class GoalsCalculator:
         
         return msg
     
-    def get_goals_list(self) -> str:
+    def get_goals_list(self, user_id: str) -> str:
         """
         Получить список всех целей с их статусом
+        
+        Args:
+            user_id: UUID пользователя
         
         Returns:
             форматированная строка со списком целей
         """
         msg = "📊 МОИ ЦЕЛИ 2026\n\n"
         
-        goals = self.db.get_goals_by_category()
+        goals = self.db.get_user_goals(user_id)
         categories = {}
         
         for goal in goals:
@@ -301,9 +307,12 @@ class GoalsCalculator:
         
         return msg
     
-    def get_weekly_report(self) -> str:
+    def get_weekly_report(self, user_id: str) -> str:
         """
         Получить недельный отчет
+        
+        Args:
+            user_id: UUID пользователя
         
         Returns:
             форматированная строка с отчетом
@@ -311,7 +320,7 @@ class GoalsCalculator:
         msg = "📈 ОТЧЕТ ЗА НЕДЕЛЮ\n\n"
         
         # Получаем отметки за неделю
-        checkins = self.db.get_weekly_checkins()
+        checkins = self.db.get_weekly_checkins(user_id)
         
         # Статистика по тренировкам
         workouts_count = sum(1 for c in checkins if c.get('workout'))
@@ -322,7 +331,7 @@ class GoalsCalculator:
         msg += f"💰 Доход за неделю: {total_income:,.0f} ₽\n\n"
         
         # Прогресс по целям
-        goals = self.db.get_goals_by_category()
+        goals = self.db.get_user_goals(user_id)
         
         msg += "📊 Прогресс по целям:\n"
         for goal in goals[:5]:  # Показываем первые 5 целей

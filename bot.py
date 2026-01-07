@@ -12,10 +12,11 @@ from telegram.ext import (
     filters,
     ContextTypes
 )
-from config import TELEGRAM_BOT_TOKEN, TELEGRAM_USER_ID
-from database import Database
+from config import TELEGRAM_BOT_TOKEN
+from database_supabase import SupabaseDatabase
 from goals import GoalsCalculator
 from scheduler import NotificationScheduler
+from middleware import user_auth_middleware, get_user_id_from_context
 
 # Настройка логирования
 logging.basicConfig(
@@ -25,8 +26,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Инициализация базы данных и калькулятора
-db = Database()
-db.init_default_goals()
+db = SupabaseDatabase()
+# Дефолтные цели создаются автоматически для каждого пользователя при регистрации
 calculator = GoalsCalculator(db)
 
 
@@ -35,8 +36,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     Обработчик команды /start
     Приветствует пользователя и показывает список доступных команд
     """
+    # Вызываем middleware для авторизации
+    await user_auth_middleware(update, context)
+    user_id = get_user_id_from_context(context)
+    user = db.get_user_by_telegram_id(update.effective_user.id)
+    
+    # Приветствуем пользователя по имени
+    first_name = user.get('first_name', 'Пользователь') if user else 'Пользователь'
+    
     welcome_message = (
-        "🎯 Привет! Я твой трекер целей на 2026 год.\n\n"
+        f"🎯 Привет, {first_name}! Я твой трекер целей на 2026 год.\n\n"
         "📋 Доступные команды:\n"
         "/today - сводка на сегодня\n"
         "/goals - список всех целей\n"
@@ -65,7 +74,9 @@ async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
     Показывает сводку на сегодня с прогрессом по целям
     """
     try:
-        summary = calculator.get_today_summary()
+        await user_auth_middleware(update, context)
+        user_id = get_user_id_from_context(context)
+        summary = calculator.get_today_summary(user_id)
         await update.message.reply_text(summary)
     except Exception as e:
         logger.error(f"Ошибка в команде /today: {e}")
@@ -78,7 +89,9 @@ async def goals(update: Update, context: ContextTypes.DEFAULT_TYPE):
     Показывает список всех целей с их статусом
     """
     try:
-        goals_list = calculator.get_goals_list()
+        await user_auth_middleware(update, context)
+        user_id = get_user_id_from_context(context)
+        goals_list = calculator.get_goals_list(user_id)
         await update.message.reply_text(goals_list)
     except Exception as e:
         logger.error(f"Ошибка в команде /goals: {e}")
@@ -111,6 +124,10 @@ async def update(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
         
+        # Вызываем middleware для авторизации
+        await user_auth_middleware(update, context)
+        user_id = get_user_id_from_context(context)
+        
         # Получаем аргументы
         goal_name = context.args[0].lower()
         value_str = context.args[1]
@@ -120,7 +137,7 @@ async def update(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Относительное изменение
             change = float(value_str)
             # Находим цель и обновляем относительно текущего значения
-            goals_list = db.get_goals_by_category()
+            goals_list = db.get_user_goals(user_id)
             goal_found = None
             
             for goal in goals_list:
@@ -130,7 +147,7 @@ async def update(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             if goal_found:
                 new_value = goal_found['current_value'] + change
-                db.update_goal_value(goal_found['id'], new_value)
+                db.update_goal_value(user_id, goal_found['id'], new_value)
                 await update.message.reply_text(
                     f"✅ Обновлено: {goal_found['name']}\n"
                     f"Было: {goal_found['current_value']:.0f}\n"
@@ -161,7 +178,7 @@ async def update(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 # Специальная обработка для дохода - обновляем актуальную цель
                 if goal_name == 'доход':
                     from datetime import date
-                    goals_list = db.get_goals_by_category('финансы')
+                    goals_list = db.get_user_goals(user_id, category='финансы')
                     # Находим актуальную цель по доходу в зависимости от месяца
                     current_month = date.today().month
                     goal_found = None
@@ -179,7 +196,7 @@ async def update(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             break
                     
                     if goal_found:
-                        db.update_goal_value(goal_found['id'], value)
+                        db.update_goal_value(user_id, goal_found['id'], value)
                         await update.message.reply_text(
                             f"✅ Обновлено: {goal_found['name']} = {value:,.0f} ₽"
                         )
@@ -190,7 +207,7 @@ async def update(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 # Специальная обработка для тренировок (да/нет)
                 if goal_name in ['тренировка', 'тренировки'] and value_str.lower() in ['да', 'yes', '1', 'true']:
                     # Увеличиваем счетчик тренировок на 1
-                    goals_list = db.get_goals_by_category('спорт')
+                    goals_list = db.get_user_goals(user_id, category='спорт')
                     workout_goal = None
                     for goal in goals_list:
                         if 'Тренировки' in goal['name']:
@@ -199,7 +216,7 @@ async def update(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     
                     if workout_goal:
                         new_value = workout_goal['current_value'] + 1
-                        db.update_goal_value(workout_goal['id'], new_value)
+                        db.update_goal_value(user_id, workout_goal['id'], new_value)
                         await update.message.reply_text(
                             f"✅ Тренировка засчитана! Всего тренировок на этой неделе: {new_value:.0f}"
                         )
@@ -211,11 +228,11 @@ async def update(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if goal_name in goal_mapping:
                     category, name = goal_mapping[goal_name]
                     if name:  # Если name не None (не специальный случай)
-                        db.update_goal_by_name(category, name, value)
+                        db.update_goal_by_name(user_id, category, name, value)
                         await update.message.reply_text(f"✅ Обновлено: {name} = {value:.0f}")
                 else:
                     # Пытаемся найти по названию или категории
-                    goals_list = db.get_goals_by_category()
+                    goals_list = db.get_user_goals(user_id)
                     goal_found = None
                     
                     for goal in goals_list:
@@ -224,7 +241,7 @@ async def update(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             break
                     
                     if goal_found:
-                        db.update_goal_value(goal_found['id'], value)
+                        db.update_goal_value(user_id, goal_found['id'], value)
                         await update.message.reply_text(
                             f"✅ Обновлено: {goal_found['name']} = {value:.0f}"
                         )
@@ -247,7 +264,9 @@ async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     Показывает недельный отчет с прогрессом
     """
     try:
-        report_text = calculator.get_weekly_report()
+        await user_auth_middleware(update, context)
+        user_id = get_user_id_from_context(context)
+        report_text = calculator.get_weekly_report(user_id)
         await update.message.reply_text(report_text)
     except Exception as e:
         logger.error(f"Ошибка в команде /report: {e}")
@@ -267,8 +286,10 @@ async def log_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
         
+        await user_auth_middleware(update, context)
+        user_id = get_user_id_from_context(context)
         note = ' '.join(context.args)
-        db.add_daily_checkin(notes=note)
+        db.add_daily_checkin(user_id=user_id, notes=note)
         await update.message.reply_text(f"✅ Запись добавлена: {note}")
     
     except Exception as e:
@@ -282,8 +303,11 @@ async def remind(update: Update, context: ContextTypes.DEFAULT_TYPE):
     Включает или выключает уведомления
     """
     try:
+        await user_auth_middleware(update, context)
+        user_id = get_user_id_from_context(context)
+        
         if not context.args:
-            current = db.get_setting('notifications_enabled', 'on')
+            current = db.get_setting(user_id, 'notifications_enabled', 'on')
             status = "включены" if current == 'on' else "выключены"
             await update.message.reply_text(
                 f"📢 Уведомления сейчас {status}.\n"
@@ -293,10 +317,10 @@ async def remind(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         action = context.args[0].lower()
         if action == 'on':
-            db.set_setting('notifications_enabled', 'on')
+            db.set_setting(user_id, 'notifications_enabled', 'on')
             await update.message.reply_text("✅ Уведомления включены")
         elif action == 'off':
-            db.set_setting('notifications_enabled', 'off')
+            db.set_setting(user_id, 'notifications_enabled', 'off')
             await update.message.reply_text("🔕 Уведомления выключены")
         else:
             await update.message.reply_text("❌ Используйте: /remind on или /remind off")
@@ -342,11 +366,14 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
         
+        await user_auth_middleware(update, context)
         task = context.args[0].lower()
+        
+        user_id = get_user_id_from_context(context)
         
         # Тренировка
         if task in ['тренировка', 'тренировки', 'workout']:
-            goals_list = db.get_goals_by_category('спорт')
+            goals_list = db.get_user_goals(user_id, category='спорт')
             workout_goal = None
             for goal in goals_list:
                 if 'Тренировки' in goal['name']:
@@ -355,7 +382,7 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             if workout_goal:
                 new_value = workout_goal['current_value'] + 1
-                db.update_goal_value(workout_goal['id'], new_value, note="Тренировка выполнена")
+                db.update_goal_value(user_id, workout_goal['id'], new_value, note="Тренировка выполнена")
                 await update.message.reply_text(
                     f"🏃 Тренировка засчитана!\n"
                     f"Всего тренировок на этой неделе: {new_value:.0f}"
@@ -375,7 +402,7 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 income = float(context.args[1])
                 from datetime import date
-                goals_list = db.get_goals_by_category('финансы')
+                goals_list = db.get_user_goals(user_id, category='финансы')
                 current_month = date.today().month
                 
                 if current_month <= 2:
@@ -393,7 +420,7 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 if goal_found:
                     # Обновляем доход (заменяем значение, так как это месячный доход)
-                    db.update_goal_value(goal_found['id'], income, note=f"Доход за день: {income:,.0f} ₽")
+                    db.update_goal_value(user_id, goal_found['id'], income, note=f"Доход за день: {income:,.0f} ₽")
                     await update.message.reply_text(
                         f"💰 Доход добавлен: {income:,.0f} ₽\n"
                         f"Обновлена цель: {goal_found['name']}"
@@ -405,7 +432,7 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Страна
         elif task in ['страна', 'страны', 'country', 'countries']:
-            goals_list = db.get_goals_by_category('путешествия')
+            goals_list = db.get_user_goals(user_id, category='путешествия')
             country_goal = None
             for goal in goals_list:
                 if 'страны' in goal['name'].lower() or 'country' in goal['name'].lower():
@@ -414,7 +441,7 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             if country_goal:
                 new_value = country_goal['current_value'] + 1
-                db.update_goal_value(country_goal['id'], new_value, note="Посещена новая страна")
+                db.update_goal_value(user_id, country_goal['id'], new_value, note="Посещена новая страна")
                 await update.message.reply_text(
                     f"✈️ Страна добавлена!\n"
                     f"Всего посещено стран: {new_value:.0f}/{country_goal['target_value']:.0f}"
@@ -424,7 +451,7 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Марафон
         elif task in ['марафон', 'marathon']:
-            goals_list = db.get_goals_by_category('спорт')
+            goals_list = db.get_user_goals(user_id, category='спорт')
             marathon_goal = None
             for goal in goals_list:
                 if 'Марафон' in goal['name']:
@@ -433,7 +460,7 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             if marathon_goal:
                 new_value = marathon_goal['current_value'] + 1
-                db.update_goal_value(marathon_goal['id'], new_value, note="Марафон пробежан")
+                db.update_goal_value(user_id, marathon_goal['id'], new_value, note="Марафон пробежан")
                 await update.message.reply_text(
                     f"🏃 Марафон засчитан!\n"
                     f"Всего марафонов: {new_value:.0f}/{marathon_goal['target_value']:.0f}"
@@ -452,7 +479,7 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             try:
                 weight = float(context.args[1])
-                goals_list = db.get_goals_by_category('спорт')
+                goals_list = db.get_user_goals(user_id, category='спорт')
                 weight_goal = None
                 for goal in goals_list:
                     if 'Вес' in goal['name']:
@@ -461,7 +488,7 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 if weight_goal:
                     old_weight = weight_goal['current_value']
-                    db.update_goal_value(weight_goal['id'], weight, note=f"Обновлен вес: {weight} кг")
+                    db.update_goal_value(user_id, weight_goal['id'], weight, note=f"Обновлен вес: {weight} кг")
                     
                     # Пересчитываем прогресс с учетом начального значения
                     initial = weight_goal.get('initial_value', 105)
@@ -518,34 +545,30 @@ def main():
         logger.error("TELEGRAM_BOT_TOKEN не установлен! Создайте файл .env")
         return
     
-    if not TELEGRAM_USER_ID:
-        logger.error("TELEGRAM_USER_ID не установлен! Создайте файл .env")
-        return
-    
     # Создаем приложение бота
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     
     # Добавляем обработчики команд
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("today", today))
-    application.add_handler(CommandHandler("goals", goals))
-    application.add_handler(CommandHandler("done", done))
-    application.add_handler(CommandHandler("update", update))
-    application.add_handler(CommandHandler("report", report))
-    application.add_handler(CommandHandler("log", log_entry))
-    application.add_handler(CommandHandler("remind", remind))
-    application.add_handler(CommandHandler("skip", skip))
+    application.add_handler(CommandHandler("start", start), group=0)
+    application.add_handler(CommandHandler("today", today), group=0)
+    application.add_handler(CommandHandler("goals", goals), group=0)
+    application.add_handler(CommandHandler("done", done), group=0)
+    application.add_handler(CommandHandler("update", update), group=0)
+    application.add_handler(CommandHandler("report", report), group=0)
+    application.add_handler(CommandHandler("log", log_entry), group=0)
+    application.add_handler(CommandHandler("remind", remind), group=0)
+    application.add_handler(CommandHandler("skip", skip), group=0)
     
     # Добавляем обработчик ошибок
     application.add_error_handler(error_handler)
     
-    # Настраиваем планировщик уведомлений
-    scheduler = NotificationScheduler(application.bot, TELEGRAM_USER_ID)
+    # Настраиваем планировщик уведомлений (теперь работает с множественными пользователями)
+    scheduler = NotificationScheduler(application.bot, db)
     scheduler.start()
     
     # Запускаем бота
     logger.info("Бот запущен и готов к работе!")
-    logger.info(f"Уведомления будут отправляться пользователю с ID: {TELEGRAM_USER_ID}")
+    logger.info("Поддержка множественных пользователей активирована")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
